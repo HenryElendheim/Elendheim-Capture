@@ -6,6 +6,12 @@
 
 <p align="center">A plain camera for Android. Take photos and videos. Nothing else.</p>
 
+<p align="center">
+  <a href="https://github.com/HenryElendheim/TrueCapture/releases/latest/download/TrueCapture.apk">
+    <img src="https://img.shields.io/badge/Download-TrueCapture%20APK-2ea44f?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK">
+  </a>
+</p>
+
 ---
 
 ## Why
@@ -31,15 +37,15 @@ gallery. That is the whole idea.
 
 ## Installing it on your phone
 
-You do not need a computer or any developer tools. GitHub builds the app for you.
+You do not need a computer or any developer tools.
 
-1. Go to the **Actions** tab of this repository on GitHub.
-2. Open the most recent **Build APK** run with a green check mark.
-3. Under **Artifacts**, download **TrueCapture-apk**.
-4. Unzip it on your phone. Inside is a file called `app-debug.apk`.
-5. Tap the file to install it. The first time, Android will ask you to allow
-   installing apps from this source. Turn that on, then install.
-6. Open TrueCapture and allow the camera and microphone permissions when asked.
+1. Tap the **Download TrueCapture APK** button above (or
+   [this link](https://github.com/HenryElendheim/TrueCapture/releases/latest/download/TrueCapture.apk))
+   on your phone. It always downloads the newest version.
+2. Open the downloaded `TrueCapture.apk` and tap to install. The first time,
+   Android will ask you to allow installing apps from this source. Turn that on,
+   then install.
+3. Open TrueCapture and allow the camera and microphone permissions when asked.
 
 If Play Protect shows a warning, that is normal for an app installed outside the
 Play Store. Tap **More details**, then **Install anyway**.
