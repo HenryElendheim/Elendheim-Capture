@@ -10,10 +10,12 @@ import android.hardware.camera2.CameraCharacteristics
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.util.Range
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private var flashMode = ImageCapture.FLASH_MODE_OFF
     private var videoMode = false
     private var torchOn = false
+    private var frameRate = 30
 
     // The physical lens (ultra-wide, main, tele) currently selected, or null
     // for the camera's default lens. Lets the zoom bar switch real lenses.
@@ -99,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         binding.flashButton.setOnClickListener { onFlashButton() }
         binding.modePhoto.setOnClickListener { setVideoMode(false) }
         binding.modeVideo.setOnClickListener { setVideoMode(true) }
+        binding.settingsButton.setOnClickListener { showFrameRateMenu() }
 
         setUpTouchControls()
         updateButtons()
@@ -161,7 +165,10 @@ class MainActivity : AppCompatActivity() {
                                 )
                             )
                             .build()
-                        VideoCapture.withOutput(recorder).also { videoCapture = it }
+                        VideoCapture.Builder(recorder)
+                            .setTargetFrameRate(Range(frameRate, frameRate))
+                            .build()
+                            .also { videoCapture = it }
                     }
                     imageCapture = null
                     cameraProvider.bindToLifecycle(this, selector, preview, capture)
@@ -292,6 +299,25 @@ class MainActivity : AppCompatActivity() {
         startCamera()
     }
 
+    private fun showFrameRateMenu() {
+        val popup = PopupMenu(this, binding.settingsButton)
+        popup.menu.add(0, 30, 0, getString(R.string.fps_30))
+        popup.menu.add(0, 60, 1, getString(R.string.fps_60))
+        popup.menu.setGroupCheckable(0, true, true)
+        popup.menu.findItem(frameRate)?.isChecked = true
+        popup.setOnMenuItemClickListener { item ->
+            setFrameRate(item.itemId)
+            true
+        }
+        popup.show()
+    }
+
+    private fun setFrameRate(fps: Int) {
+        if (recording != null || fps == frameRate) return
+        frameRate = fps
+        startCamera()
+    }
+
     private fun onFlashButton() {
         if (videoMode) {
             torchOn = !torchOn
@@ -311,6 +337,9 @@ class MainActivity : AppCompatActivity() {
         // Mode tabs: the active one is bold.
         binding.modePhoto.setTypeface(null, if (videoMode) Typeface.NORMAL else Typeface.BOLD)
         binding.modeVideo.setTypeface(null, if (videoMode) Typeface.BOLD else Typeface.NORMAL)
+
+        // The frame-rate cog is only relevant while recording video.
+        binding.settingsButton.visibility = if (videoMode) View.VISIBLE else View.GONE
 
         // Shutter button graphic.
         val shutter = when {
