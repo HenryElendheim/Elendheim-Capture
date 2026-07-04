@@ -63,6 +63,10 @@ class MainActivity : AppCompatActivity() {
     private var torchOn = false
     private var frameRate = 30
 
+    // A short description of the back cameras the phone exposes, shown in the
+    // settings menu so lens problems can be diagnosed.
+    private var lensDiagnostic = ""
+
     // The physical lens (ultra-wide, main, tele) currently selected, or null
     // for the camera's default lens. Lets the zoom bar switch real lenses.
     private var lenses: List<Lens> = emptyList()
@@ -305,6 +309,9 @@ class MainActivity : AppCompatActivity() {
         popup.menu.add(0, 60, 1, getString(R.string.fps_60))
         popup.menu.setGroupCheckable(0, true, true)
         popup.menu.findItem(frameRate)?.isChecked = true
+        if (lensDiagnostic.isNotEmpty()) {
+            popup.menu.add(1, 100, 2, lensDiagnostic).isEnabled = false
+        }
         popup.setOnMenuItemClickListener { item ->
             setFrameRate(item.itemId)
             true
@@ -313,6 +320,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setFrameRate(fps: Int) {
+        if (fps != 30 && fps != 60) return
         if (recording != null || fps == frameRate) return
         frameRate = fps
         startCamera()
@@ -471,22 +479,36 @@ class MainActivity : AppCompatActivity() {
             } else {
                 CameraSelector.LENS_FACING_FRONT
             }
-            val infos = provider.availableCameraInfos.filter {
-                runCatching { it.lensFacing == facing }.getOrDefault(false)
-            }
-            if (infos.size < 2) return emptyList()
+            val infos = provider.availableCameraInfos.filter { infoFacing(it) == facing }
 
-            val baseSelector = if (back) {
-                CameraSelector.DEFAULT_BACK_CAMERA
-            } else {
-                CameraSelector.DEFAULT_FRONT_CAMERA
+            // Each camera's id and 35mm-equivalent focal length.
+            val data = infos.mapNotNull { info ->
+                val id = runCatching { Camera2CameraInfo.from(info).cameraId }.getOrNull()
+                    ?: return@mapNotNull null
+                Triple(info, id, equivFocalLength(info))
             }
-            val mainInfo = baseSelector.filter(infos).firstOrNull() ?: return emptyList()
-            val mainEquiv = equivFocalLength(mainInfo) ?: return emptyList()
 
-            val lenses = infos.mapNotNull { info ->
-                val equiv = equivFocalLength(info) ?: return@mapNotNull null
-                val id = Camera2CameraInfo.from(info).cameraId
+            if (back) {
+                lensDiagnostic = if (data.isEmpty()) {
+                    "Cameras: none found"
+                } else {
+                    "Cameras: " + data.joinToString(", ") { (_, id, equiv) ->
+                        "#$id " + (equiv?.let { "${it.roundToInt()}mm" } ?: "?")
+                    }
+                }
+            }
+
+            val withFocal = data.mapNotNull { (info, id, equiv) ->
+                equiv?.let { Triple(info, id, it) }
+            }
+            if (withFocal.size < 2) return emptyList()
+
+            // Main lens = the shortest focal length that is not an ultra-wide
+            // (18mm or longer). Every lens is measured relative to it.
+            val mainEquiv = withFocal.map { it.third }.filter { it >= 18f }.minOrNull()
+                ?: withFocal.minOf { it.third }
+
+            val lenses = withFocal.map { (_, id, equiv) ->
                 Lens(id, equiv / mainEquiv, selectorForCameraId(id))
             }
                 .filter { it.relativeZoom in 0.3f..12f }
@@ -497,6 +519,14 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    private fun infoFacing(info: CameraInfo): Int? {
+        runCatching { return info.lensFacing }
+        return runCatching {
+            Camera2CameraInfo.from(info)
+                .getCameraCharacteristic(CameraCharacteristics.LENS_FACING)
+        }.getOrNull()
     }
 
     private fun equivFocalLength(info: CameraInfo): Float? {
