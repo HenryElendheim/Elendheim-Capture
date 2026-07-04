@@ -7,7 +7,7 @@
 <p align="center">A plain camera for Android. Take photos and videos. Nothing else.</p>
 
 <p align="center">
-  <a href="https://github.com/HenryElendheim/TrueCapture/releases/latest/download/ElendheimCapture.apk">
+  <a href="https://github.com/HenryElendheim/Elendheim-Capture/releases/latest/download/ElendheimCapture.apk">
     <img src="https://img.shields.io/badge/Download-Elendheim%20Capture%20APK-2ea44f?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK">
   </a>
 </p>
@@ -41,7 +41,7 @@ gallery. That is the whole idea.
 You do not need a computer or any developer tools.
 
 1. Tap the **Download Elendheim Capture APK** button above (or
-   [this link](https://github.com/HenryElendheim/TrueCapture/releases/latest/download/ElendheimCapture.apk))
+   [this link](https://github.com/HenryElendheim/Elendheim-Capture/releases/latest/download/ElendheimCapture.apk))
    on your phone. It always downloads the newest version.
 2. Open the downloaded `ElendheimCapture.apk` and tap to install. The first time,
    Android will ask you to allow installing apps from this source. Turn that on,
