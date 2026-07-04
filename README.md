@@ -11,7 +11,7 @@ to your phone. Nothing else.
 - Switch between the back and front camera
 - Flash off, on, or auto for photos, and a light toggle for video
 - Tap the screen to focus
-- Pinch to zoom
+- Pinch to zoom, or tap a zoom level (such as 1x or 2x) on the zoom bar
 - Photos and videos are saved to the `DCIM/Camera` folder, so they appear
   directly in your gallery alongside your other pictures
 

@@ -4,10 +4,14 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.MediaStore
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -29,6 +33,7 @@ import androidx.core.content.ContextCompat
 import com.truecapture.app.databinding.ActivityMainBinding
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
 
@@ -48,6 +53,10 @@ class MainActivity : AppCompatActivity() {
     // camera folder, so they show up directly in the gallery.
     private val cameraFolder = "DCIM/Camera"
 
+    // Zoom levels offered on the zoom bar. Only the ones the current camera
+    // actually supports are shown.
+    private val candidateZoomLevels = listOf(0.6f, 1f, 2f, 3f, 6f)
+
     private val requestPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             if (result[Manifest.permission.CAMERA] == true) {
@@ -65,7 +74,8 @@ class MainActivity : AppCompatActivity() {
         binding.shutterButton.setOnClickListener { onShutter() }
         binding.flipButton.setOnClickListener { flipCamera() }
         binding.flashButton.setOnClickListener { onFlashButton() }
-        binding.modeButton.setOnClickListener { toggleMode() }
+        binding.modePhoto.setOnClickListener { setVideoMode(false) }
+        binding.modeVideo.setOnClickListener { setVideoMode(true) }
 
         setUpTouchControls()
         updateButtons()
@@ -119,6 +129,7 @@ class MainActivity : AppCompatActivity() {
                     cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
                 }
                 torchOn = false
+                buildZoomBar()
                 updateButtons()
             } catch (e: Exception) {
                 Toast.makeText(this, R.string.camera_start_failed, Toast.LENGTH_LONG).show()
@@ -216,9 +227,9 @@ class MainActivity : AppCompatActivity() {
         startCamera()
     }
 
-    private fun toggleMode() {
-        if (recording != null) return
-        videoMode = !videoMode
+    private fun setVideoMode(video: Boolean) {
+        if (recording != null || videoMode == video) return
+        videoMode = video
         startCamera()
     }
 
@@ -238,13 +249,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateButtons() {
-        binding.modeButton.setText(if (videoMode) R.string.mode_video else R.string.mode_photo)
+        // Mode tabs: the active one is bold.
+        binding.modePhoto.setTypeface(null, if (videoMode) Typeface.NORMAL else Typeface.BOLD)
+        binding.modeVideo.setTypeface(null, if (videoMode) Typeface.BOLD else Typeface.NORMAL)
 
+        // Shutter button graphic.
+        val shutter = when {
+            !videoMode -> R.drawable.bg_shutter_photo
+            recording != null -> R.drawable.bg_shutter_recording
+            else -> R.drawable.bg_shutter_video
+        }
+        binding.shutterButton.setBackgroundResource(shutter)
+
+        // Flash button doubles as a light toggle while in video mode.
         if (videoMode) {
-            binding.shutterButton.setText(if (recording != null) R.string.stop else R.string.record)
             binding.flashButton.setText(if (torchOn) R.string.light_on else R.string.light_off)
         } else {
-            binding.shutterButton.setText(R.string.take_photo)
             val flashLabel = when (flashMode) {
                 ImageCapture.FLASH_MODE_ON -> R.string.flash_on
                 ImageCapture.FLASH_MODE_AUTO -> R.string.flash_auto
@@ -254,13 +274,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildZoomBar() {
+        val zoomState = camera?.cameraInfo?.zoomState?.value ?: return
+        val min = zoomState.minZoomRatio
+        val max = zoomState.maxZoomRatio
+        val levels = candidateZoomLevels.filter { it in min..max }
+
+        binding.zoomBar.removeAllViews()
+        for (level in levels) {
+            val item = TextView(this).apply {
+                text = zoomLabel(level)
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                gravity = Gravity.CENTER
+                minWidth = dp(40)
+                val padV = dp(6)
+                setPadding(dp(6), padV, dp(6), padV)
+                isClickable = true
+                tag = level
+                setOnClickListener {
+                    camera?.cameraControl?.setZoomRatio(level)
+                    highlightZoom(level)
+                }
+            }
+            binding.zoomBar.addView(item)
+        }
+        highlightZoom(zoomState.zoomRatio)
+    }
+
+    private fun highlightZoom(ratio: Float) {
+        for (i in 0 until binding.zoomBar.childCount) {
+            val item = binding.zoomBar.getChildAt(i) as TextView
+            val level = item.tag as Float
+            val selected = abs(level - ratio) < 0.05f
+            item.background = if (selected) {
+                ContextCompat.getDrawable(this, R.drawable.bg_zoom_selected)
+            } else {
+                null
+            }
+            item.setTypeface(null, if (selected) Typeface.BOLD else Typeface.NORMAL)
+        }
+    }
+
+    private fun zoomLabel(level: Float): String {
+        return when {
+            level == 1f -> "1×"
+            level % 1f == 0f -> level.toInt().toString()
+            else -> level.toString()
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun setUpTouchControls() {
         val scaleListener = object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val control = camera?.cameraControl ?: return true
-                val currentZoom = camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f
-                control.setZoomRatio(currentZoom * detector.scaleFactor)
+                val state = camera?.cameraInfo?.zoomState?.value ?: return true
+                val target = (state.zoomRatio * detector.scaleFactor)
+                    .coerceIn(state.minZoomRatio, state.maxZoomRatio)
+                control.setZoomRatio(target)
+                highlightZoom(target)
                 return true
             }
         }
@@ -286,5 +359,9 @@ class MainActivity : AppCompatActivity() {
     private fun timeStamp(): String {
         return SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
             .format(System.currentTimeMillis())
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
     }
 }
