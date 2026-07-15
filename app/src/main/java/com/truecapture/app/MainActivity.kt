@@ -5,10 +5,20 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RenderEffect
 import android.graphics.Typeface
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.os.VibrationEffect
@@ -20,10 +30,15 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.exifinterface.media.ExifInterface
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
@@ -46,6 +61,8 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import com.truecapture.app.databinding.ActivityMainBinding
+import org.json.JSONArray
+import java.io.ByteArrayInputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.abs
@@ -75,6 +92,10 @@ class MainActivity : AppCompatActivity() {
     private var volumeCapture = false
     private var gridLines = false
     private var largeControls = false
+
+    // Colour filters. The list is the built-in looks plus any custom ones.
+    private var filters: List<Filter> = Filters.standard
+    private var currentFilterIndex = 0
 
     // The physical lens (ultra-wide, main, tele) currently selected. null means
     // the camera's default (main) lens. Lets the zoom bar switch real lenses.
@@ -117,6 +138,7 @@ class MainActivity : AppCompatActivity() {
         binding.modePhoto.setOnClickListener { setVideoMode(false) }
         binding.modeVideo.setOnClickListener { setVideoMode(true) }
         binding.settingsButton.setOnClickListener { openSettings() }
+        binding.filterButton.setOnClickListener { toggleFilterPanel() }
 
         loadSettings()
         applyStaticSettings()
@@ -168,6 +190,13 @@ class MainActivity : AppCompatActivity() {
         volumeCapture = prefs.getBoolean("volume_capture", false)
         gridLines = prefs.getBoolean("grid_lines", false)
         largeControls = prefs.getBoolean("large_controls", false)
+        reloadFilters()
+    }
+
+    private fun reloadFilters() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        filters = Filters.standard + Filters.loadCustom(prefs.getString("custom_filters", null))
+        if (currentFilterIndex >= filters.size) currentFilterIndex = 0
     }
 
     private fun applyStaticSettings() {
@@ -175,6 +204,7 @@ class MainActivity : AppCompatActivity() {
         binding.vignetteOverlay.setVignetteColor(frontFlashColor)
         applyControlSizes()
         updateVignette()
+        applyPreviewFilter()
     }
 
     private fun applyControlSizes() {
@@ -218,6 +248,170 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             vibrator.vibrate(VibrationEffect.createOneShot(30, VibrationEffect.DEFAULT_AMPLITUDE))
         }
+    }
+
+    // --- Colour filters ----------------------------------------------------
+
+    private fun currentFilter(): Filter? = filters.getOrNull(currentFilterIndex)
+
+    private fun toggleFilterPanel() {
+        val showing = binding.filterScroll.visibility == View.VISIBLE
+        binding.filterScroll.visibility = if (showing) View.GONE else View.VISIBLE
+        if (!showing) populateFilterPanel()
+    }
+
+    private fun populateFilterPanel() {
+        binding.filterBar.removeAllViews()
+        filters.forEachIndexed { index, filter ->
+            val chip = makeFilterChip(filter.name)
+            setChipSelected(chip, index == currentFilterIndex)
+            chip.setOnClickListener { selectFilter(index) }
+            binding.filterBar.addView(chip)
+        }
+        // A plus chip to build your own filter.
+        val add = makeFilterChip("+")
+        add.setOnClickListener { showCustomFilterDialog() }
+        binding.filterBar.addView(add)
+    }
+
+    private fun makeFilterChip(label: String): TextView {
+        return TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            minWidth = dp(56)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            isClickable = true
+            contentDescription = label
+        }
+    }
+
+    private fun selectFilter(index: Int) {
+        currentFilterIndex = index
+        applyPreviewFilter()
+        populateFilterPanel()
+    }
+
+    // Show the chosen look on the live preview. Needs Android 12 (S) or newer.
+    private fun applyPreviewFilter() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val matrix = if (!videoMode) currentFilter()?.matrix else null
+        binding.previewView.setRenderEffect(
+            if (matrix != null) {
+                RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(matrix))
+            } else {
+                null
+            }
+        )
+    }
+
+    private fun showCustomFilterDialog() {
+        val pad = dp(16)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+        }
+        val nameInput = EditText(this).apply {
+            hint = "Filter name"
+            contentDescription = "Filter name"
+        }
+        container.addView(nameInput)
+        // Sliders sit at the middle by default, so no change until you move them.
+        val warmth = addSlider(container, "Warmth", 100, 50)
+        val brightness = addSlider(container, "Brightness", 100, 50)
+        val saturation = addSlider(container, "Saturation", 200, 100)
+
+        AlertDialog.Builder(this)
+            .setTitle("Custom filter")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val name = nameInput.text.toString().ifBlank { "Custom" }
+                addCustomFilter(
+                    name,
+                    (warmth.progress - 50).toFloat(),
+                    (brightness.progress - 50).toFloat(),
+                    saturation.progress / 100f
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun addSlider(parent: LinearLayout, label: String, max: Int, start: Int): SeekBar {
+        parent.addView(TextView(this).apply {
+            text = label
+            setPadding(0, dp(12), 0, 0)
+        })
+        val slider = SeekBar(this).apply {
+            this.max = max
+            progress = start
+            contentDescription = label
+        }
+        parent.addView(slider)
+        return slider
+    }
+
+    private fun addCustomFilter(name: String, warmth: Float, brightness: Float, saturation: Float) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val json = Filters.appendCustom(
+            prefs.getString("custom_filters", null), name, warmth, brightness, saturation
+        )
+        prefs.edit().putString("custom_filters", json).apply()
+        reloadFilters()
+        currentFilterIndex = filters.size - 1
+        applyPreviewFilter()
+        populateFilterPanel()
+    }
+
+    // Bake the chosen look into the saved photo. Runs off the main thread.
+    private fun applyFilterToPhoto(uri: Uri?, matrix: ColorMatrix) {
+        uri ?: return
+        Thread {
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: return@Thread
+                var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@Thread
+                // Keep the photo the right way up.
+                val orientation = ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+                bitmap = rotateForExif(bitmap, orientation)
+                val output = Bitmap.createBitmap(
+                    bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888
+                )
+                Canvas(output).drawBitmap(
+                    bitmap, 0f, 0f,
+                    Paint().apply { colorFilter = ColorMatrixColorFilter(matrix) }
+                )
+                contentResolver.openOutputStream(uri, "wt")?.use {
+                    output.compress(Bitmap.CompressFormat.JPEG, 95, it)
+                }
+            } catch (e: Exception) {
+                // Ignore -> the pending flag is cleared below either way.
+            }
+            // Make the photo visible now that it is finished.
+            runCatching {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                }
+                contentResolver.update(uri, values, null, null)
+            }
+        }.start()
+    }
+
+    private fun rotateForExif(bitmap: Bitmap, orientation: Int): Bitmap {
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            else -> return bitmap
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     private fun hasCameraPermission(): Boolean {
@@ -342,11 +536,18 @@ class MainActivity : AppCompatActivity() {
         playShutterEffect()
         vibrateOnCapture()
 
+        // If a filter is picked, bake it in after saving. Hide the photo until
+        // then with IS_PENDING so the unfiltered version never flashes up.
+        val filterMatrix = currentFilter()?.matrix
+
         val name = timeStamp()
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             put(MediaStore.Images.Media.RELATIVE_PATH, cameraFolder)
+            if (filterMatrix != null) {
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
         }
 
         val outputOptions = ImageCapture.OutputFileOptions.Builder(
@@ -360,6 +561,9 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    if (filterMatrix != null) {
+                        applyFilterToPhoto(output.savedUri, filterMatrix)
+                    }
                     Toast.makeText(this@MainActivity, R.string.photo_saved, Toast.LENGTH_SHORT).show()
                 }
 
@@ -453,6 +657,11 @@ class MainActivity : AppCompatActivity() {
 
         // Update the selfie-camera corner glow to match the flash state.
         updateVignette()
+
+        // Filters are a photo feature, so hide the button in video mode.
+        binding.filterButton.visibility = if (videoMode) View.GONE else View.VISIBLE
+        if (videoMode) binding.filterScroll.visibility = View.GONE
+        applyPreviewFilter()
 
         // Shutter button graphic.
         val shutter = when {
