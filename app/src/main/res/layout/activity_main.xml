@@ -9,6 +9,7 @@
         android:id="@+id/previewView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        app:implementationMode="compatible"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -67,33 +68,29 @@
 
     </LinearLayout>
 
-    <!-- Settings gear, top right. Opens the settings screen. -->
-    <ImageButton
-        android:id="@+id/settingsButton"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_margin="16dp"
-        android:padding="10dp"
-        android:background="@drawable/bg_round_button"
-        android:src="@drawable/ic_settings"
-        android:scaleType="fitCenter"
-        android:contentDescription="@string/settings"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+    <!-- Filter picker, shown when the filter button is tapped. -->
+    <HorizontalScrollView
+        android:id="@+id/filterScroll"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_zoom_bar"
+        android:paddingVertical="4dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <ImageButton
-        android:id="@+id/flashButton"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
-        android:layout_marginStart="32dp"
-        android:padding="12dp"
-        android:background="@drawable/bg_round_button"
-        android:src="@drawable/ic_flash_off"
-        android:scaleType="fitCenter"
-        android:contentDescription="@string/flash_off"
-        app:layout_constraintTop_toTopOf="@id/shutterButton"
-        app:layout_constraintBottom_toBottomOf="@id/shutterButton"
-        app:layout_constraintStart_toStartOf="parent" />
+        <LinearLayout
+            android:id="@+id/filterBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp" />
+
+    </HorizontalScrollView>
 
     <LinearLayout
         android:id="@+id/zoomBar"
@@ -152,10 +149,39 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <ImageButton
+        android:id="@+id/flashButton"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginEnd="16dp"
+        android:padding="12dp"
+        android:background="@drawable/bg_round_button"
+        android:src="@drawable/ic_flash_off"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/flash_off"
+        app:layout_constraintTop_toTopOf="@id/shutterButton"
+        app:layout_constraintBottom_toBottomOf="@id/shutterButton"
+        app:layout_constraintEnd_toStartOf="@id/shutterButton" />
+
+    <!-- Filters, on the left. -->
+    <ImageButton
+        android:id="@+id/filterButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="10dp"
+        android:padding="11dp"
+        android:background="@drawable/bg_round_button"
+        android:src="@drawable/ic_filter"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/filters"
+        app:layout_constraintTop_toTopOf="@id/shutterButton"
+        app:layout_constraintBottom_toBottomOf="@id/shutterButton"
+        app:layout_constraintEnd_toStartOf="@id/flashButton" />
+
+    <ImageButton
         android:id="@+id/flipButton"
         android:layout_width="52dp"
         android:layout_height="52dp"
-        android:layout_marginEnd="32dp"
+        android:layout_marginStart="16dp"
         android:padding="12dp"
         android:background="@drawable/bg_round_button"
         android:src="@drawable/ic_flip"
@@ -163,7 +189,22 @@
         android:contentDescription="@string/flip_camera"
         app:layout_constraintTop_toTopOf="@id/shutterButton"
         app:layout_constraintBottom_toBottomOf="@id/shutterButton"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintStart_toEndOf="@id/shutterButton" />
+
+    <!-- Settings, on the right, low down and out of the way. -->
+    <ImageButton
+        android:id="@+id/settingsButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="10dp"
+        android:padding="10dp"
+        android:background="@drawable/bg_round_button"
+        android:src="@drawable/ic_settings"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/settings"
+        app:layout_constraintTop_toTopOf="@id/shutterButton"
+        app:layout_constraintBottom_toBottomOf="@id/shutterButton"
+        app:layout_constraintStart_toEndOf="@id/flipButton" />
 
     <!-- Black overlay flashed briefly when a photo is taken (shutter effect). -->
     <View
