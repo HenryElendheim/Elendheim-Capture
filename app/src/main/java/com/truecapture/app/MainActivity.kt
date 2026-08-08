@@ -30,6 +30,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.WindowManager
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -984,11 +985,15 @@ class MainActivity : AppCompatActivity() {
         binding.recordTimer.base = SystemClock.elapsedRealtime()
         binding.recordTimer.start()
         binding.recordIndicator.visibility = View.VISIBLE
+        // Hold the screen on while filming so it does not sleep mid-recording.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun stopTimer() {
         binding.recordTimer.stop()
         binding.recordIndicator.visibility = View.GONE
+        // Let the screen sleep normally again now that filming has stopped.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun timeStamp(): String {
